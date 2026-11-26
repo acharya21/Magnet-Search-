@@ -1,1562 +1,199 @@
 <!DOCTYPE html>
 <html lang="en" class="dark">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>VortiX — Open Distribution & Magnet Hub</title>
-  
-  <!-- Tailwind CSS -->
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#0f172a" />
+  <title>MagnetHub — Universal Torrent Search</title>
   <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen font-sans">
+  <div class="max-w-5xl mx-auto px-4 py-6">
+    <!-- Header -->
+    <header class="flex flex-wrap items-center justify-between gap-4 pb-6 border-b border-slate-800">
+      <div>
+        <h1 class="text-2xl font-bold tracking-tight text-indigo-400">MagnetHub</h1>
+        <p class="text-xs text-slate-400">Multi-Index Torrent & Magnet Search PWA</p>
+      </div>
+      <div class="flex items-center gap-2">
+        <button id="installBtn" class="hidden px-3 py-1.5 text-sm font-medium bg-indigo-600 hover:bg-indigo-500 rounded-lg transition">
+          Install App
+        </button>
+        <button id="savedTabBtn" class="px-3 py-1.5 text-sm font-medium bg-slate-800 hover:bg-slate-700 rounded-lg transition">
+          Saved (<span id="savedCount">0</span>)
+        </button>
+      </div>
+    </header>
+
+    <!-- Search Bar -->
+    <form id="searchForm" class="mt-6 flex gap-2">
+      <input
+        id="searchInput"
+        type="text"
+        placeholder="Search movies, TV shows, software, games..."
+        class="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-indigo-500"
+        required
+      />
+      <button
+        type="submit"
+        class="px-6 py-3 bg-indigo-600 hover:bg-indigo-500 font-semibold text-sm rounded-xl transition"
+      >
+        Search
+      </button>
+    </form>
+
+    <!-- Status & Filters -->
+    <div class="mt-4 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-400">
+      <span id="statusText">Enter a query to search across multi-site indexes.</span>
+      <div class="flex items-center gap-2">
+        <label for="sortSelect">Sort:</label>
+        <select id="sortSelect" class="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-slate-200">
+          <option value="seeds">Most Seeds</option>
+          <option value="peers">Most Peers</option>
+          <option value="size">Largest Size</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Results List -->
+    <main id="resultsContainer" class="mt-4 space-y-3"></main>
+  </div>
+
   <script>
-    tailwind.config = {
-      darkMode: 'class',
-      theme: {
-        extend: {
-          colors: {
-            brand: {
-              50: '#f0fdf4',
-              400: '#34d399',
-              500: '#10b981',
-              600: '#059669',
-              dark: '#0a0d14',
-              panel: '#111827',
-              border: '#1f2937',
-              accent: '#38bdf8'
-            }
-          },
-          fontFamily: {
-            sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
-            mono: ['JetBrains Mono', 'Menlo', 'monospace']
-          }
-        }
-      }
-    }
-  </script>
+    // PASTE YOUR CLOUDFLARE WORKER URL HERE:
+    const WORKER_URL = "https://torrentsearchproxy.sachin-acharya13.workers.dev/";
 
-  <!-- Lucide Icons -->
-  <script src="https://unpkg.com/lucide@latest"></script>
-  <!-- QRCode.js for Magnet mobile QR preview -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    let currentResults = [];
+    let showingSaved = false;
+    let savedItems = JSON.parse(localStorage.getItem("saved_magnets") || "[]");
 
-  <style>
-    /* Custom Scrollbar */
-    ::-webkit-scrollbar {
-      width: 6px;
-      height: 6px;
-    }
-    ::-webkit-scrollbar-track {
-      background: #0b0f19;
-    }
-    ::-webkit-scrollbar-thumb {
-      background: #1f293d;
-      border-radius: 9999px;
-    }
-    ::-webkit-scrollbar-thumb:hover {
-      background: #374151;
-    }
-
-    .glass-panel {
-      background: rgba(17, 24, 39, 0.75);
-      backdrop-filter: blur(12px);
-      -webkit-backdrop-filter: blur(12px);
-      border: 1px solid rgba(255, 255, 255, 0.08);
-    }
-    
-    .glow-cyan {
-      box-shadow: 0 0 20px -5px rgba(56, 189, 248, 0.3);
-    }
-
-    .glow-emerald {
-      box-shadow: 0 0 20px -5px rgba(16, 185, 129, 0.3);
-    }
-  </style>
-
-  <!-- Dynamic PWA Manifest and Service Worker Injection -->
-  <script>
-    // Generate inline PWA manifest
+    // Inline PWA Manifest & Service Worker
     const manifest = {
-      name: "VortiX Torrent & Magnet Hub",
-      short_name: "VortiX",
-      description: "Fast PWA for searching open distributions, public domain archives, and magnet links.",
-      start_url: "./",
+      name: "MagnetHub Torrent Search",
+      short_name: "MagnetHub",
+      start_url: ".",
       display: "standalone",
-      background_color: "#0a0d14",
-      theme_color: "#10b981",
-      icons: [
-        {
-          src: "https://placehold.co/192x192/0a0d14/10b981?text=VX",
-          sizes: "192x192",
-          type: "image/png"
-        },
-        {
-          src: "https://placehold.co/512x512/0a0d14/10b981?text=VortiX",
-          sizes: "512x512",
-          type: "image/png"
-        }
-      ]
+      background_color: "#020617",
+      theme_color: "#0f172a",
+      icons: [{
+        src: "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%234f46e5'/><text x='50' y='68' font-size='55' text-anchor='middle' fill='white'>🧲</text></svg>",
+        sizes: "512x512",
+        type: "image/svg+xml"
+      }]
     };
-    const stringManifest = JSON.stringify(manifest);
-    const blob = new Blob([stringManifest], { type: 'application/json' });
-    const manifestURL = URL.createObjectURL(blob);
-    const link = document.createElement('link');
-    link.rel = 'manifest';
-    link.href = manifestURL;
+    const manifestBlob = new Blob([JSON.stringify(manifest)], { type: "application/json" });
+    const link = document.createElement("link");
+    link.rel = "manifest";
+    link.href = URL.createObjectURL(manifestBlob);
     document.head.appendChild(link);
 
-    // Register simple Service Worker for PWA installability criteria
-    if ('serviceWorker' in navigator) {
-      const swCode = `
-        const CACHE_NAME = 'vortix-cache-v1';
-        self.addEventListener('install', (e) => {
-          self.skipWaiting();
-        });
-        self.addEventListener('activate', (e) => {
-          e.waitUntil(clients.claim());
-        });
-        self.addEventListener('fetch', (e) => {
-          e.respondWith(
-            fetch(e.request).catch(() => caches.match(e.request))
-          );
-        });
-      `;
-      const swBlob = new Blob([swCode], { type: 'application/javascript' });
-      const swUrl = URL.createObjectURL(swBlob);
-      navigator.serviceWorker.register(swUrl).catch(() => {
-        // SW registered or fallback
-      });
+    if ("serviceWorker" in navigator) {
+      const swCode = "self.addEventListener('fetch', () => {});";
+      const swBlob = new Blob([swCode], { type: "application/javascript" });
+      navigator.serviceWorker.register(URL.createObjectURL(swBlob)).catch(() => {});
     }
-  </script>
-</head>
-<body class="bg-[#080b11] text-slate-100 min-h-screen flex flex-col font-sans selection:bg-emerald-500 selection:text-black">
 
-  <!-- Toast Notification Container -->
-  <div id="toast-container" class="fixed bottom-6 right-6 z-50 flex flex-col gap-2 pointer-events-none"></div>
-
-  <!-- Header / Nav -->
-  <header class="sticky top-0 z-40 glass-panel border-b border-slate-800/80">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
-      
-      <!-- Brand Logo -->
-      <div class="flex items-center gap-3 cursor-pointer" onclick="switchTab('search')">
-        <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-cyan-500 flex items-center justify-center shadow-lg shadow-emerald-500/20">
-          <i data-lucide="compass" class="w-6 h-6 text-black stroke-[2.5]"></i>
-        </div>
-        <div>
-          <span class="text-xl font-black tracking-wider bg-clip-text text-transparent bg-gradient-to-r from-emerald-400 via-cyan-300 to-sky-400">VORTIX</span>
-          <span class="text-xs px-2 py-0.5 ml-2 rounded-full font-mono font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">PWA</span>
-        </div>
-      </div>
-
-      <!-- Navigation Tabs -->
-      <nav class="hidden md:flex items-center space-x-1 p-1 bg-slate-900/90 border border-slate-800 rounded-xl">
-        <button onclick="switchTab('search')" id="tab-btn-search" class="nav-tab px-3.5 py-1.5 rounded-lg text-sm font-medium transition flex items-center gap-2 bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
-          <i data-lucide="search" class="w-4 h-4"></i> Search & Hub
-        </button>
-        <button onclick="switchTab('analyzer')" id="tab-btn-analyzer" class="nav-tab px-3.5 py-1.5 rounded-lg text-sm font-medium transition flex items-center gap-2 text-slate-400 hover:text-slate-200">
-          <i data-lucide="magnet" class="w-4 h-4"></i> Magnet Analyzer
-        </button>
-        <button onclick="switchTab('bookmarks')" id="tab-btn-bookmarks" class="nav-tab px-3.5 py-1.5 rounded-lg text-sm font-medium transition flex items-center gap-2 text-slate-400 hover:text-slate-200">
-          <i data-lucide="bookmark" class="w-4 h-4"></i> Saved (<span id="saved-count-badge">0</span>)
-        </button>
-      </nav>
-
-      <!-- Right Header Actions -->
-      <div class="flex items-center gap-2">
-        <!-- Install PWA button (Initially hidden until beforeinstallprompt triggers) -->
-        <button id="pwa-install-btn" class="hidden px-3.5 py-1.5 text-xs sm:text-sm font-semibold rounded-lg bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-md shadow-cyan-500/20 hover:brightness-110 flex items-center gap-1.5 transition">
-          <i data-lucide="download" class="w-4 h-4"></i> Install App
-        </button>
-
-        <!-- Torznab / Custom Indexer Settings Button -->
-        <button onclick="openSettingsModal()" class="p-2 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 border border-slate-700/60 transition" title="Indexer & Custom Endpoint Settings">
-          <i data-lucide="settings" class="w-5 h-5"></i>
-        </button>
-      </div>
-    </div>
-
-    <!-- Mobile Sub-navigation -->
-    <div class="md:hidden flex items-center justify-around border-t border-slate-800/80 px-2 py-2 bg-slate-950/80 text-xs">
-      <button onclick="switchTab('search')" class="mobile-tab-btn flex flex-col items-center gap-1 text-emerald-400" data-tab="search">
-        <i data-lucide="search" class="w-4 h-4"></i> Hub
-      </button>
-      <button onclick="switchTab('analyzer')" class="mobile-tab-btn flex flex-col items-center gap-1 text-slate-400" data-tab="analyzer">
-        <i data-lucide="magnet" class="w-4 h-4"></i> Analyzer
-      </button>
-      <button onclick="switchTab('bookmarks')" class="mobile-tab-btn flex flex-col items-center gap-1 text-slate-400" data-tab="bookmarks">
-        <i data-lucide="bookmark" class="w-4 h-4"></i> Saved
-      </button>
-    </div>
-  </header>
-
-  <!-- Main Container -->
-  <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
-
-    <!-- ========================================== -->
-    <!-- TAB 1: SEARCH & HUB                       -->
-    <!-- ========================================== -->
-    <section id="view-search" class="space-y-6">
-      
-      <!-- Search Banner & Control Area -->
-      <div class="glass-panel p-5 sm:p-7 rounded-2xl relative overflow-hidden border border-slate-800/80 shadow-2xl">
-        <div class="absolute -top-24 -right-24 w-72 h-72 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
-        <div class="absolute -bottom-24 -left-24 w-72 h-72 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none"></div>
-
-        <div class="relative z-10 flex flex-col gap-4">
-          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-            <div>
-              <h1 class="text-2xl sm:text-3xl font-extrabold text-white tracking-tight flex items-center gap-2">
-                Open Torrent & Dataset Search
-              </h1>
-              <p class="text-slate-400 text-xs sm:text-sm mt-1">
-                Explore legal distributions, Linux ISOs, Internet Archive public items & CC datasets with full tracker metrics.
-              </p>
-            </div>
-            <!-- Live Source Indicator -->
-            <div id="active-source-badge" class="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs bg-slate-800 border border-slate-700 text-slate-300 self-start">
-              <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-              Built-in Core + Archive.org Live
-            </div>
-          </div>
-
-          <!-- Search Input Bar -->
-          <div class="relative flex items-center mt-2">
-            <i data-lucide="search" class="w-5 h-5 absolute left-4 text-slate-400 pointer-events-none"></i>
-            <input 
-              id="search-input" 
-              type="text" 
-              placeholder="Search Ubuntu 24.04, Kali Linux, Debian, Blender Benchmark, LibriVox, NASA datasets..." 
-              class="w-full pl-12 pr-28 py-3.5 bg-slate-950/90 text-white rounded-xl border border-slate-700/80 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 placeholder-slate-500 text-sm sm:text-base transition shadow-inner"
-              oninput="handleSearchInput()"
-            />
-            <button 
-              id="clear-search-btn" 
-              onclick="clearSearch()" 
-              class="hidden absolute right-12 text-slate-400 hover:text-slate-200 p-1"
-            >
-              <i data-lucide="x" class="w-4 h-4"></i>
-            </button>
-            <button 
-              onclick="triggerLiveSearchNow()"
-              class="absolute right-2 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-semibold flex items-center gap-1 transition"
-            >
-              Go
-            </button>
-          </div>
-
-          <!-- Quick Search Tags -->
-          <div class="flex flex-wrap items-center gap-1.5 text-xs text-slate-400">
-            <span class="text-slate-500 font-medium mr-1">Trending:</span>
-            <button onclick="setQuery('Ubuntu 24.04')" class="px-2 py-0.5 rounded bg-slate-800/80 hover:bg-slate-700 hover:text-emerald-400 border border-slate-700 transition">Ubuntu 24.04</button>
-            <button onclick="setQuery('Kali Linux')" class="px-2 py-0.5 rounded bg-slate-800/80 hover:bg-slate-700 hover:text-emerald-400 border border-slate-700 transition">Kali Linux</button>
-            <button onclick="setQuery('Arch Linux')" class="px-2 py-0.5 rounded bg-slate-800/80 hover:bg-slate-700 hover:text-emerald-400 border border-slate-700 transition">Arch Linux</button>
-            <button onclick="setQuery('Blender Benchmark')" class="px-2 py-0.5 rounded bg-slate-800/80 hover:bg-slate-700 hover:text-emerald-400 border border-slate-700 transition">Blender Demo</button>
-            <button onclick="setQuery('NASA Audio')" class="px-2 py-0.5 rounded bg-slate-800/80 hover:bg-slate-700 hover:text-emerald-400 border border-slate-700 transition">NASA Datasets</button>
-            <button onclick="setQuery('Big Buck Bunny')" class="px-2 py-0.5 rounded bg-slate-800/80 hover:bg-slate-700 hover:text-emerald-400 border border-slate-700 transition">CC 4K Video</button>
-          </div>
-
-          <!-- Filters & Sort Row -->
-          <div class="pt-3 border-t border-slate-800 flex flex-wrap items-center justify-between gap-3 text-xs sm:text-sm">
-            
-            <!-- Category Chips -->
-            <div class="flex flex-wrap items-center gap-1.5" id="category-chips">
-              <button onclick="setCategory('all')" data-cat="all" class="cat-chip px-3 py-1.5 rounded-lg bg-emerald-500 text-black font-semibold shadow-sm transition">All Items</button>
-              <button onclick="setCategory('linux')" data-cat="linux" class="cat-chip px-3 py-1.5 rounded-lg bg-slate-800/90 text-slate-300 hover:bg-slate-700 transition">Linux OS</button>
-              <button onclick="setCategory('archive')" data-cat="archive" class="cat-chip px-3 py-1.5 rounded-lg bg-slate-800/90 text-slate-300 hover:bg-slate-700 transition">Open Data & IA</button>
-              <button onclick="setCategory('media')" data-cat="media" class="cat-chip px-3 py-1.5 rounded-lg bg-slate-800/90 text-slate-300 hover:bg-slate-700 transition">Media & CC</button>
-              <button onclick="setCategory('software')" data-cat="software" class="cat-chip px-3 py-1.5 rounded-lg bg-slate-800/90 text-slate-300 hover:bg-slate-700 transition">Open Software</button>
-            </div>
-
-            <!-- Sort By & Layout Mode Toggle -->
-            <div class="flex items-center gap-2 ml-auto">
-              <div class="flex items-center gap-1 bg-slate-900 border border-slate-700/80 rounded-lg px-2 py-1 text-xs">
-                <span class="text-slate-400">Sort:</span>
-                <select id="sort-select" onchange="renderResults()" class="bg-transparent text-slate-200 outline-none cursor-pointer">
-                  <option value="seeds" class="bg-slate-900">Seeds (High to Low)</option>
-                  <option value="peers" class="bg-slate-900">Peers / Activity</option>
-                  <option value="size" class="bg-slate-900">File Size (Desc)</option>
-                  <option value="date" class="bg-slate-900">Recently Updated</option>
-                  <option value="name" class="bg-slate-900">Title (A-Z)</option>
-                </select>
-              </div>
-
-              <!-- View layout toggle -->
-              <div class="flex items-center bg-slate-900 border border-slate-700/80 rounded-lg p-0.5">
-                <button id="view-mode-grid" onclick="setViewMode('grid')" class="p-1 rounded text-emerald-400 bg-slate-800 transition" title="Grid View">
-                  <i data-lucide="layout-grid" class="w-4 h-4"></i>
-                </button>
-                <button id="view-mode-list" onclick="setViewMode('list')" class="p-1 rounded text-slate-400 hover:text-slate-200 transition" title="List View">
-                  <i data-lucide="list" class="w-4 h-4"></i>
-                </button>
-              </div>
-            </div>
-
-          </div>
-
-        </div>
-      </div>
-
-      <!-- Live Fetching Status Indicator -->
-      <div id="live-loading-bar" class="hidden glass-panel px-4 py-2.5 rounded-xl border border-cyan-500/30 flex items-center justify-between text-xs text-cyan-300 animate-pulse">
-        <span class="flex items-center gap-2">
-          <i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> Querying remote public APIs & repositories...
-        </span>
-        <span id="loading-source-text">Archive.org & Tracker Pings</span>
-      </div>
-
-      <!-- Results Header Stats -->
-      <div class="flex items-center justify-between px-1 text-xs sm:text-sm text-slate-400">
-        <div>
-          Showing <span id="results-count" class="font-bold text-white">0</span> verified public torrents
-        </div>
-        <div class="flex items-center gap-3">
-          <span class="inline-flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-emerald-400"></span> Seeds</span>
-          <span class="inline-flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-sky-400"></span> Leechers/Peers</span>
-        </div>
-      </div>
-
-      <!-- Torrent Items Grid / List Container -->
-      <div id="torrent-results-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        <!-- Injected via JavaScript -->
-      </div>
-
-      <!-- Empty State -->
-      <div id="empty-state" class="hidden text-center py-16 px-4 glass-panel rounded-2xl border border-slate-800">
-        <div class="w-16 h-16 mx-auto mb-4 rounded-full bg-slate-800 flex items-center justify-center text-slate-500">
-          <i data-lucide="file-question" class="w-8 h-8"></i>
-        </div>
-        <h3 class="text-lg font-semibold text-white">No torrent files found</h3>
-        <p class="text-slate-400 text-sm max-w-md mx-auto mt-1 mb-4">We couldn't match anything for your query. Try broadening your terms or checking the configured indexer.</p>
-        <button onclick="clearSearch()" class="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-medium transition">
-          Reset Filter & Search
-        </button>
-      </div>
-
-    </section>
-
-    <!-- ========================================== -->
-    <!-- TAB 2: MAGNET ANALYZER & QR TOOL           -->
-    <!-- ========================================== -->
-    <section id="view-analyzer" class="hidden space-y-6">
-      
-      <div class="glass-panel p-6 sm:p-8 rounded-2xl border border-slate-800 relative">
-        <div class="max-w-3xl">
-          <h2 class="text-2xl font-bold text-white flex items-center gap-2">
-            <i data-lucide="magnet" class="w-6 h-6 text-emerald-400"></i>
-            Magnet Link Inspector & QR Generator
-          </h2>
-          <p class="text-slate-400 text-sm mt-1">
-            Paste any raw BitTorrent magnet URI to deconstruct its Info Hash (BTIH), display name, announce tracker tiers, and transfer it to your phone using QR.
-          </p>
-        </div>
-
-        <div class="mt-6 space-y-4">
-          <label class="block text-xs font-semibold uppercase tracking-wider text-slate-400">Paste Magnet URI</label>
-          <div class="flex flex-col sm:flex-row gap-2">
-            <textarea 
-              id="raw-magnet-input" 
-              rows="3" 
-              placeholder="magnet:?xt=urn:btih:3b11050a48e6f2c699aa1310e25015a8cdbb4e4f&dn=Ubuntu-24.04-desktop-amd64.iso&tr=http%3A%2F%2Ftorrent.ubuntu.com%3A6969%2Fannounce..." 
-              class="w-full p-3.5 bg-slate-950 font-mono text-xs sm:text-sm text-emerald-400 rounded-xl border border-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
-            ></textarea>
-          </div>
-          <div class="flex flex-wrap items-center gap-2">
-            <button onclick="parseCustomMagnet()" class="px-5 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-semibold text-sm transition flex items-center gap-2">
-              <i data-lucide="cpu" class="w-4 h-4"></i> Parse & Deconstruct
-            </button>
-            <button onclick="loadSampleMagnet()" class="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm transition">
-              Load Sample (Ubuntu 24.04)
-            </button>
-            <button onclick="document.getElementById('raw-magnet-input').value=''" class="px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-400 text-sm transition">
-              Clear
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <!-- Parsed Magnet Details Card -->
-      <div id="analyzer-output-card" class="hidden glass-panel p-6 sm:p-8 rounded-2xl border border-slate-800 space-y-6">
-        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-4">
-          <div>
-            <span class="text-xs font-mono font-bold text-emerald-400 uppercase tracking-widest">Identified Payload</span>
-            <h3 id="parsed-name" class="text-xl font-bold text-white mt-1 break-all"></h3>
-          </div>
-          <div class="flex items-center gap-2">
-            <button onclick="copyParsedMagnet()" class="px-3.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium flex items-center gap-1.5 transition">
-              <i data-lucide="copy" class="w-3.5 h-3.5"></i> Copy Magnet
-            </button>
-            <a id="parsed-open-btn" href="#" class="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium flex items-center gap-1.5 transition">
-              <i data-lucide="external-link" class="w-3.5 h-3.5"></i> Open Client
-            </a>
-          </div>
-        </div>
-
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          
-          <!-- Metadata Fields -->
-          <div class="lg:col-span-2 space-y-4">
-            <div>
-              <label class="text-xs text-slate-400 font-semibold block">Exact InfoHash (BTIH)</label>
-              <div class="flex items-center justify-between mt-1 p-3 bg-slate-950 rounded-xl border border-slate-800 font-mono text-xs sm:text-sm text-cyan-400 break-all">
-                <span id="parsed-btih"></span>
-                <button onclick="copyText(document.getElementById('parsed-btih').innerText)" class="ml-2 text-slate-400 hover:text-white" title="Copy Hash">
-                  <i data-lucide="copy" class="w-4 h-4"></i>
-                </button>
-              </div>
-            </div>
-
-            <div>
-              <label class="text-xs text-slate-400 font-semibold block">Configured Announce Trackers (<span id="parsed-tr-count">0</span>)</label>
-              <ul id="parsed-trackers-list" class="mt-1 space-y-1.5 max-h-48 overflow-y-auto pr-2 text-xs font-mono text-slate-300">
-                <!-- Trackers list -->
-              </ul>
-            </div>
-
-            <div class="pt-2 flex items-center gap-3">
-              <button onclick="saveParsedAsBookmark()" class="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center gap-2">
-                <i data-lucide="bookmark-plus" class="w-4 h-4 text-emerald-400"></i> Bookmark to VortiX
-              </button>
-            </div>
-          </div>
-
-          <!-- QR Code Preview for Mobile transfer -->
-          <div class="glass-panel p-4 rounded-xl border border-slate-800 flex flex-col items-center justify-center text-center">
-            <span class="text-xs font-semibold text-slate-400 mb-3 flex items-center gap-1.5">
-              <i data-lucide="qr-code" class="w-4 h-4 text-cyan-400"></i> Scan to open on Mobile
-            </span>
-            <div id="qrcode-box" class="p-3 bg-white rounded-xl shadow-lg"></div>
-            <p class="text-[11px] text-slate-500 mt-3 max-w-[200px]">
-              Scan with phone camera or QR scanner to launch BitTorrent / Libretorrent on mobile.
-            </p>
-          </div>
-
-        </div>
-      </div>
-
-    </section>
-
-    <!-- ========================================== -->
-    <!-- TAB 3: SAVED / BOOKMARKS                   -->
-    <!-- ========================================== -->
-    <section id="view-bookmarks" class="hidden space-y-6">
-      <div class="flex items-center justify-between">
-        <div>
-          <h2 class="text-2xl font-bold text-white flex items-center gap-2">
-            <i data-lucide="bookmark" class="w-6 h-6 text-emerald-400"></i>
-            Saved Bookmarks & Queue
-          </h2>
-          <p class="text-slate-400 text-sm mt-0.5">Persisted locally in your browser storage for fast offline reference.</p>
-        </div>
-        <button onclick="clearAllBookmarks()" class="px-3 py-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 text-xs font-medium transition">
-          Clear All
-        </button>
-      </div>
-
-      <!-- Bookmarks List -->
-      <div id="bookmarks-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        <!-- Injected via JavaScript -->
-      </div>
-
-      <!-- Empty Bookmarks State -->
-      <div id="empty-bookmarks" class="text-center py-16 px-4 glass-panel rounded-2xl border border-slate-800">
-        <div class="w-16 h-16 mx-auto mb-4 rounded-full bg-slate-800 flex items-center justify-center text-slate-500">
-          <i data-lucide="bookmark-x" class="w-8 h-8"></i>
-        </div>
-        <h3 class="text-lg font-semibold text-white">No saved torrents yet</h3>
-        <p class="text-slate-400 text-sm max-w-sm mx-auto mt-1 mb-4">Bookmark Linux images, public datasets, or parsed magnets to access them here anytime.</p>
-        <button onclick="switchTab('search')" class="px-4 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-black text-sm font-semibold transition">
-          Browse Library
-        </button>
-      </div>
-    </section>
-
-  </main>
-
-  <!-- ========================================== -->
-  <!-- MODAL: TORRENT DETAILS & TRACKER INSPECT   -->
-  <!-- ========================================== -->
-  <div id="torrent-modal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm hidden flex items-center justify-center p-4">
-    <div class="glass-panel w-full max-w-2xl rounded-2xl border border-slate-700 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
-      
-      <!-- Modal Header -->
-      <div class="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
-        <div class="flex items-center gap-2">
-          <span id="modal-category-badge" class="px-2 py-0.5 rounded text-[11px] font-bold font-mono bg-emerald-500/20 text-emerald-400 uppercase">OS</span>
-          <span class="text-xs text-slate-400" id="modal-source-label">Source: Official Mirror</span>
-        </div>
-        <button onclick="closeModal()" class="text-slate-400 hover:text-white p-1 rounded-lg">
-          <i data-lucide="x" class="w-5 h-5"></i>
-        </button>
-      </div>
-
-      <!-- Modal Body -->
-      <div class="p-6 overflow-y-auto space-y-5">
-        <div>
-          <h3 id="modal-title" class="text-xl font-bold text-white break-words"></h3>
-          <p id="modal-desc" class="text-slate-400 text-sm mt-1"></p>
-        </div>
-
-        <!-- Metrics pill box -->
-        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <div class="p-3 bg-slate-900/90 rounded-xl border border-slate-800 text-center">
-            <span class="text-[11px] text-slate-400 block font-medium">File Size</span>
-            <span id="modal-size" class="text-sm font-bold text-white font-mono">--</span>
-          </div>
-          <div class="p-3 bg-slate-900/90 rounded-xl border border-slate-800 text-center">
-            <span class="text-[11px] text-emerald-400 block font-medium">Seeders</span>
-            <span id="modal-seeds" class="text-sm font-bold text-emerald-400 font-mono">--</span>
-          </div>
-          <div class="p-3 bg-slate-900/90 rounded-xl border border-slate-800 text-center">
-            <span class="text-[11px] text-sky-400 block font-medium">Leechers/Peers</span>
-            <span id="modal-peers" class="text-sm font-bold text-sky-400 font-mono">--</span>
-          </div>
-          <div class="p-3 bg-slate-900/90 rounded-xl border border-slate-800 text-center">
-            <span class="text-[11px] text-slate-400 block font-medium">Health</span>
-            <span id="modal-ratio" class="text-sm font-bold text-white font-mono">--</span>
-          </div>
-        </div>
-
-        <!-- InfoHash Details -->
-        <div>
-          <label class="text-xs font-semibold text-slate-300 block mb-1">BitTorrent Info Hash (BTIH)</label>
-          <div class="flex items-center justify-between p-2.5 bg-slate-950 rounded-lg border border-slate-800 font-mono text-xs text-cyan-400 break-all">
-            <span id="modal-hash"></span>
-            <button onclick="copyText(document.getElementById('modal-hash').innerText)" class="ml-2 p-1 text-slate-400 hover:text-white" title="Copy Hash">
-              <i data-lucide="copy" class="w-4 h-4"></i>
-            </button>
-          </div>
-        </div>
-
-        <!-- Trackers List -->
-        <div>
-          <label class="text-xs font-semibold text-slate-300 block mb-1">Configured Trackers</label>
-          <div id="modal-trackers" class="p-3 bg-slate-950 rounded-lg border border-slate-800 max-h-36 overflow-y-auto space-y-1 text-xs font-mono text-slate-400">
-            <!-- Tracker URLs -->
-          </div>
-        </div>
-
-        <!-- File Tree Preview -->
-        <div>
-          <label class="text-xs font-semibold text-slate-300 block mb-1">Included Files Preview</label>
-          <div id="modal-files" class="p-3 bg-slate-950 rounded-lg border border-slate-800 text-xs font-mono text-slate-300 space-y-1">
-            <!-- Files list -->
-          </div>
-        </div>
-      </div>
-
-      <!-- Modal Footer -->
-      <div class="px-6 py-4 bg-slate-900/80 border-t border-slate-800 flex flex-wrap items-center justify-between gap-3">
-        <button id="modal-bookmark-btn" onclick="toggleBookmarkFromModal()" class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center gap-1.5 transition">
-          <i data-lucide="bookmark" class="w-4 h-4"></i> Save Bookmark
-        </button>
-
-        <div class="flex items-center gap-2">
-          <button id="modal-copy-magnet" class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center gap-1.5 transition">
-            <i data-lucide="copy" class="w-4 h-4"></i> Copy Magnet
-          </button>
-          <a id="modal-open-client" href="#" class="px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:brightness-110 text-black font-bold text-xs flex items-center gap-1.5 transition shadow-lg shadow-emerald-500/20">
-            <i data-lucide="download" class="w-4 h-4"></i> Open in Client
-          </a>
-        </div>
-      </div>
-
-    </div>
-  </div>
-
-  <!-- ========================================== -->
-  <!-- MODAL: SETTINGS & CUSTOM TORZNAB/INDEXER   -->
-  <!-- ========================================== -->
-  <div id="settings-modal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm hidden flex items-center justify-center p-4">
-    <div class="glass-panel w-full max-w-lg rounded-2xl border border-slate-700 shadow-2xl overflow-hidden flex flex-col">
-      <div class="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
-        <h3 class="text-lg font-bold text-white flex items-center gap-2">
-          <i data-lucide="sliders" class="w-5 h-5 text-emerald-400"></i> Custom Indexer / Proxy Settings
-        </h3>
-        <button onclick="closeSettingsModal()" class="text-slate-400 hover:text-white p-1">
-          <i data-lucide="x" class="w-5 h-5"></i>
-        </button>
-      </div>
-
-      <div class="p-6 space-y-4 text-xs sm:text-sm">
-        <p class="text-slate-400">
-          Optionally hook up your own self-hosted <strong>Jackett</strong>, <strong>Prowlarr</strong>, or Torznab-compatible indexer endpoint for private / custom feeds.
-        </p>
-
-        <div>
-          <label class="block text-slate-300 font-semibold mb-1">Indexer Base URL</label>
-          <input 
-            type="text" 
-            id="setting-indexer-url" 
-            placeholder="http://localhost:9696/api/v1/search or https://my-jackett.local/api/v2.0/indexers/all/results/torznab" 
-            class="w-full p-2.5 bg-slate-950 rounded-lg border border-slate-700 text-slate-200 text-xs focus:ring-1 focus:ring-emerald-500 focus:outline-none"
-          />
-        </div>
-
-        <div>
-          <label class="block text-slate-300 font-semibold mb-1">API Key (if required)</label>
-          <input 
-            type="password" 
-            id="setting-api-key" 
-            placeholder="Enter Torznab/Jackett API key" 
-            class="w-full p-2.5 bg-slate-950 rounded-lg border border-slate-700 text-slate-200 text-xs focus:ring-1 focus:ring-emerald-500 focus:outline-none"
-          />
-        </div>
-
-        <div class="flex items-center gap-2 pt-2">
-          <input type="checkbox" id="setting-live-archive" checked class="rounded bg-slate-900 border-slate-700 text-emerald-500 focus:ring-emerald-500">
-          <label for="setting-live-archive" class="text-slate-300 cursor-pointer">
-            Enable live queries against Internet Archive Public API (open datasets & public domain media)
-          </label>
-        </div>
-
-        <div class="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-xs flex items-start gap-2">
-          <i data-lucide="shield-check" class="w-4 h-4 mt-0.5 shrink-0"></i>
-          <span>Keys are stored strictly client-side in your device's <code>localStorage</code> and never sent to third-party tracking services.</span>
-        </div>
-      </div>
-
-      <div class="px-6 py-4 bg-slate-900/80 border-t border-slate-800 flex justify-end gap-2">
-        <button onclick="closeSettingsModal()" class="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 text-xs font-semibold">
-          Cancel
-        </button>
-        <button onclick="saveSettings()" class="px-4 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-bold">
-          Save Preferences
-        </button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Footer -->
-  <footer class="border-t border-slate-800/80 mt-12 py-6 text-xs text-slate-500 text-center glass-panel">
-    <div class="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-3">
-      <div class="flex items-center gap-2">
-        <i data-lucide="radio" class="w-4 h-4 text-emerald-400"></i>
-        <span>VortiX PWA — Distributed P2P Open Knowledge & Public Mirrors</span>
-      </div>
-      <div>
-        Runs 100% offline-ready & in-browser via standard BitTorrent protocol URIs.
-      </div>
-    </div>
-  </footer>
-
-  <!-- ========================================== -->
-  <!-- APPLICATION LOGIC                          -->
-  <!-- ========================================== -->
-  <script>
-    // -------------------------------------------------------------
-    // 1. BUILT-IN VERIFIED OPEN DATASET / LINUX / CC TORRENTS DATABASE
-    // -------------------------------------------------------------
-    const BUILTIN_TORRENTS = [
-      {
-        id: "vx-ubu-2404",
-        name: "Ubuntu 24.04 LTS (Noble Numbat) Desktop 64-bit ISO",
-        category: "linux",
-        badge: "Linux ISO",
-        sizeBytes: 6116343808, // ~5.7 GB
-        seeds: 1840,
-        peers: 240,
-        updated: "2024-04-25",
-        source: "Canonical Official Mirror",
-        hash: "3b11050a48e6f2c699aa1310e25015a8cdbb4e4f",
-        files: ["ubuntu-24.04-desktop-amd64.iso", "ubuntu-24.04-desktop-amd64.iso.zsync"],
-        trackers: [
-          "https://torrent.ubuntu.com/announce",
-          "https://ipv6.torrent.ubuntu.com/announce",
-          "udp://tracker.opentrackr.org:1337/announce"
-        ],
-        desc: "Official Ubuntu 24.04 LTS (Noble Numbat) installation image with long-term support through 2029."
-      },
-      {
-        id: "vx-kali-2024",
-        name: "Kali Linux 2024.2 Installer 64-bit AMD64",
-        category: "linux",
-        badge: "Security Distro",
-        sizeBytes: 4215275520, // ~3.9 GB
-        seeds: 1120,
-        peers: 165,
-        updated: "2024-06-05",
-        source: "Offensive Security",
-        hash: "7e5f3bc755106e5e89647895107e3ca3ca90fa83",
-        files: ["kali-linux-2024.2-installer-amd64.iso"],
-        trackers: [
-          "http://tracker.kali.org:6969/announce",
-          "udp://tracker.opentrackr.org:1337/announce"
-        ],
-        desc: "Standard complete installer for Kali Linux security assessment and penetration testing distribution."
-      },
-      {
-        id: "vx-arch-2024",
-        name: "Arch Linux 2024.05.01 x86_64 Minimal Installation Media",
-        category: "linux",
-        badge: "Rolling Release",
-        sizeBytes: 940572672, // ~897 MB
-        seeds: 950,
-        peers: 78,
-        updated: "2024-05-01",
-        source: "Arch Linux Core",
-        hash: "2b920401fe35bfcf26ae79d63c9bbfba7bb5ef06",
-        files: ["archlinux-2024.05.01-x86_64.iso"],
-        trackers: [
-          "udp://tracker.archlinux.org:6969/announce",
-          "http://tracker.archlinux.org:6969/announce"
-        ],
-        desc: "Minimal, lightweight, rolling-release Linux live media with pacman package management."
-      },
-      {
-        id: "vx-deb-12",
-        name: "Debian 12.5.0 Bookworm Official NetInst CD 64-bit",
-        category: "linux",
-        badge: "Linux ISO",
-        sizeBytes: 659554304, // ~629 MB
-        seeds: 870,
-        peers: 54,
-        updated: "2024-03-20",
-        source: "Debian Project",
-        hash: "9312948bbcbde415b39e557b4431e21b0e515d68",
-        files: ["debian-12.5.0-amd64-netinst.iso"],
-        trackers: [
-          "http://bttracker.debian.org:6969/announce",
-          "udp://tracker.opentrackr.org:1337/announce"
-        ],
-        desc: "Rock-solid universal operating system network installation image with essential packages."
-      },
-      {
-        id: "vx-fedora-40",
-        name: "Fedora Workstation 40 x86_64 Live ISO (GNOME 46)",
-        category: "linux",
-        badge: "Linux ISO",
-        sizeBytes: 2362232012, // ~2.2 GB
-        seeds: 740,
-        peers: 110,
-        updated: "2024-04-23",
-        source: "Fedora Project",
-        hash: "a43878b668f447781bcf799ee5108b98e49811c7",
-        files: ["Fedora-Workstation-Live-x86_64-40-1.14.iso"],
-        trackers: [
-          "https://torrent.fedoraproject.org/announce",
-          "udp://tracker.opentrackr.org:1337/announce"
-        ],
-        desc: "Leading-edge, pure GNOME Linux workstation environment sponsored by Red Hat."
-      },
-      {
-        id: "vx-raspbian-64",
-        name: "Raspberry Pi OS 64-bit (Bookworm with Desktop)",
-        category: "linux",
-        badge: "ARM64 OS",
-        sizeBytes: 1258291200, // ~1.17 GB
-        seeds: 610,
-        peers: 95,
-        updated: "2024-03-15",
-        source: "Raspberry Pi Foundation",
-        hash: "d3129994cba8879612fcd6238b975aaee0877a5e",
-        files: ["2024-03-15-raspios-bookworm-arm64.img.xz"],
-        trackers: [
-          "http://tracker.raspberrypi.org:6969/announce",
-          "udp://tracker.opentrackr.org:1337/announce"
-        ],
-        desc: "Official 64-bit operating system image optimized for Raspberry Pi 4, 5, and 400 models."
-      },
-      {
-        id: "vx-blender-bench",
-        name: "Blender 4.0 Open Benchmark Assets & Classroom Scene",
-        category: "software",
-        badge: "Open 3D Assets",
-        sizeBytes: 812646400, // ~775 MB
-        seeds: 430,
-        peers: 42,
-        updated: "2024-01-10",
-        source: "Blender Institute",
-        hash: "1fa93b584982bb9007469a48f438a22ee1882bc9",
-        files: ["blender_benchmark_assets.zip", "classroom_render.blend"],
-        trackers: [
-          "udp://tracker.opentrackr.org:1337/announce",
-          "udp://open.stealth.si:80/announce"
-        ],
-        desc: "Standard benchmark scenes including Classroom, BMW, and Monster for hardware rendering speed tests."
-      },
-      {
-        id: "vx-bbb-4k",
-        name: "Big Buck Bunny 4K 60fps Open Creative Commons Film",
-        category: "media",
-        badge: "CC-BY 3.0",
-        sizeBytes: 1048576000, // ~1 GB
-        seeds: 512,
-        peers: 32,
-        updated: "2023-11-02",
-        source: "Blender Open Projects",
-        hash: "dd8255ecdc7ca55fb0bbf81323d87062db1f6d1c",
-        files: ["big_buck_bunny_4k_h264.mov", "license_creative_commons.txt"],
-        trackers: [
-          "http://tracker.blender.org:6969/announce",
-          "udp://tracker.opentrackr.org:1337/announce"
-        ],
-        desc: "Open source cinema showcase rendered entirely in Blender under Creative Commons Attribution license."
-      },
-      {
-        id: "vx-archive-nasa",
-        name: "NASA Apollo 11 Lunar Mission Audio & Transcripts Archive",
-        category: "archive",
-        badge: "Public Domain",
-        sizeBytes: 3435973836, // ~3.2 GB
-        seeds: 380,
-        peers: 25,
-        updated: "2023-07-20",
-        source: "Internet Archive / NASA",
-        hash: "557a220fbe428135cc3120173ca3401e1498b89e",
-        files: ["apollo_11_audio_tapes_master.flac", "transcripts_full.pdf"],
-        trackers: [
-          "http://bt1.archive.org:6969/announce",
-          "http://bt2.archive.org:6969/announce"
-        ],
-        desc: "Complete remastered communications between Mission Control and the Apollo 11 Lunar Module."
-      },
-      {
-        id: "vx-archive-wiki",
-        name: "English Wikipedia Complete Text Dump (Compressed XML)",
-        category: "archive",
-        badge: "Open Knowledge",
-        sizeBytes: 21474836480, // ~20 GB
-        seeds: 410,
-        peers: 89,
-        updated: "2024-04-01",
-        source: "Wikimedia Foundation / IA",
-        hash: "82a88d67290c01a2489e5a198421098bca12ef31",
-        files: ["enwiki-latest-pages-articles-multistream.xml.bz2"],
-        trackers: [
-          "http://bt1.archive.org:6969/announce",
-          "udp://tracker.opentrackr.org:1337/announce"
-        ],
-        desc: "All encyclopedic articles from Wikipedia in English without media files, suitable for offline LLMs or Kiwix."
-      }
-    ];
-
-    // -------------------------------------------------------------
-    // 2. STATE & CONFIGURATION
-    // -------------------------------------------------------------
-    let allTorrents = [...BUILTIN_TORRENTS];
-    let filteredTorrents = [...BUILTIN_TORRENTS];
-    let currentCategory = 'all';
-    let currentSort = 'seeds';
-    let currentViewMode = 'grid'; // 'grid' | 'list'
-    let searchQuery = '';
-    let debounceTimer = null;
-    let deferredPrompt = null;
-    let selectedModalTorrent = null;
-
-    // Load Bookmarks from LocalStorage
-    let savedBookmarks = JSON.parse(localStorage.getItem('vortix_bookmarks') || '[]');
-
-    // -------------------------------------------------------------
-    // 3. PWA INSTALLATION EVENT HANDLER
-    // -------------------------------------------------------------
-    window.addEventListener('beforeinstallprompt', (e) => {
+    let deferredPrompt;
+    const installBtn = document.getElementById("installBtn");
+    window.addEventListener("beforeinstallprompt", (e) => {
       e.preventDefault();
       deferredPrompt = e;
-      const installBtn = document.getElementById('pwa-install-btn');
-      if (installBtn) {
-        installBtn.classList.remove('hidden');
-        installBtn.addEventListener('click', async () => {
-          if (!deferredPrompt) return;
-          deferredPrompt.prompt();
-          const { outcome } = await deferredPrompt.userChoice;
-          if (outcome === 'accepted') {
-            showToast('VortiX installed to your device!', 'success');
-          }
-          deferredPrompt = null;
-          installBtn.classList.add('hidden');
-        });
-      }
+      installBtn.classList.remove("hidden");
+    });
+    installBtn.addEventListener("click", async () => {
+      if (!deferredPrompt) return;
+      deferredPrompt.prompt();
+      await deferredPrompt.userChoice;
+      deferredPrompt = null;
+      installBtn.classList.add("hidden");
     });
 
-    window.addEventListener('appinstalled', () => {
-      showToast('App is now ready on your home screen / desktop!', 'success');
-      const installBtn = document.getElementById('pwa-install-btn');
-      if (installBtn) installBtn.classList.add('hidden');
+    const updateSavedCount = () => {
+      document.getElementById("savedCount").textContent = savedItems.length;
+    };
+    updateSavedCount();
+
+    const renderResults = (items) => {
+      const container = document.getElementById("resultsContainer");
+      if (!items.length) {
+        container.innerHTML = `<div class="p-8 text-center text-slate-500 bg-slate-900/50 rounded-xl border border-slate-800">No torrents found.</div>`;
+        return;
+      }
+
+      container.innerHTML = items.map(item => {
+        const isSaved = savedItems.some(s => s.magnet === item.magnet);
+        return `
+          <div class="p-4 bg-slate-900 border border-slate-800 hover:border-slate-700 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div class="space-y-1.5 min-w-0 flex-1">
+              <h2 class="font-medium text-sm text-slate-100 break-words">${item.title}</h2>
+              <div class="flex flex-wrap items-center gap-2 text-xs">
+                <span class="px-2 py-0.5 rounded bg-slate-800 text-slate-300">${item.size}</span>
+                <span class="px-2 py-0.5 rounded bg-emerald-950 text-emerald-400 font-semibold">▲ ${item.seeds} Seeds</span>
+                <span class="px-2 py-0.5 rounded bg-amber-950 text-amber-400">▼ ${item.peers} Peers</span>
+                <span class="px-2 py-0.5 rounded bg-indigo-950 text-indigo-300">${item.source}</span>
+              </div>
+            </div>
+            <div class="flex items-center gap-2 shrink-0">
+              <a href="${item.magnet}" class="px-3 py-2 text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 rounded-lg transition">
+                Open Magnet
+              </a>
+              <button onclick='copyMagnet(${JSON.stringify(item.magnet)})' class="px-3 py-2 text-xs bg-slate-800 hover:bg-slate-700 rounded-lg transition">
+                Copy
+              </button>
+              <button onclick='toggleSave(${JSON.stringify(item)})' class="px-3 py-2 text-xs ${isSaved ? "bg-rose-900/60 text-rose-300" : "bg-slate-800 hover:bg-slate-700"} rounded-lg transition">
+                ${isSaved ? "Remove" : "Save"}
+              </button>
+            </div>
+          </div>
+        `;
+      }).join("");
+    };
+
+    window.copyMagnet = (magnet) => {
+      navigator.clipboard.writeText(magnet);
+      document.getElementById("statusText").textContent = "Magnet link copied to clipboard.";
+    };
+
+    window.toggleSave = (item) => {
+      const idx = savedItems.findIndex(s => s.magnet === item.magnet);
+      if (idx > -1) savedItems.splice(idx, 1);
+      else savedItems.push(item);
+      localStorage.setItem("saved_magnets", JSON.stringify(savedItems));
+      updateSavedCount();
+      renderResults(showingSaved ? savedItems : currentResults);
+    };
+
+    document.getElementById("savedTabBtn").addEventListener("click", () => {
+      showingSaved = !showingSaved;
+      document.getElementById("savedTabBtn").classList.toggle("bg-indigo-600", showingSaved);
+      document.getElementById("statusText").textContent = showingSaved ? "Showing saved magnets." : `Showing ${currentResults.length} results.`;
+      renderResults(showingSaved ? savedItems : currentResults);
     });
 
-    // -------------------------------------------------------------
-    // 4. MAGNET URL GENERATOR HELPER
-    // -------------------------------------------------------------
-    function buildMagnetURI(torrent) {
-      if (!torrent.hash) return '#';
-      let uri = `magnet:?xt=urn:btih:${torrent.hash.toLowerCase()}`;
-      if (torrent.name) {
-        uri += `&dn=${encodeURIComponent(torrent.name)}`;
-      }
-      if (torrent.trackers && Array.isArray(torrent.trackers)) {
-        torrent.trackers.forEach(tr => {
-          uri += `&tr=${encodeURIComponent(tr)}`;
-        });
-      }
-      return uri;
-    }
+    document.getElementById("sortSelect").addEventListener("change", (e) => {
+      const by = e.target.value;
+      const list = showingSaved ? [...savedItems] : [...currentResults];
+      list.sort((a, b) => by === "size" ? b.sizeBytes - a.sizeBytes : b[by] - a[by]);
+      renderResults(list);
+    });
 
-    // Parse raw magnet string
-    function parseMagnetURI(rawUri) {
-      if (!rawUri || !rawUri.startsWith('magnet:?')) {
-        return null;
-      }
-      const queryString = rawUri.substring(8);
-      const params = new URLSearchParams(queryString);
-      
-      let xt = params.get('xt') || '';
-      let hash = '';
-      if (xt.includes('urn:btih:')) {
-        hash = xt.replace('urn:btih:', '').trim();
-      }
-
-      let dn = params.get('dn') || 'Unnamed Torrent';
-      let trackers = params.getAll('tr') || [];
-
-      return {
-        name: dn,
-        hash: hash,
-        trackers: trackers,
-        raw: rawUri
-      };
-    }
-
-    // -------------------------------------------------------------
-    // 5. SEARCH & FILTER PIPELINE
-    // -------------------------------------------------------------
-    function handleSearchInput() {
-      const input = document.getElementById('search-input');
-      const clearBtn = document.getElementById('clear-search-btn');
-      searchQuery = input.value.trim();
-
-      if (searchQuery.length > 0) {
-        clearBtn.classList.remove('hidden');
-      } else {
-        clearBtn.classList.add('hidden');
-      }
-
-      clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(() => {
-        applyFilters();
-        // If user typed 3+ chars and live fetch enabled, hit live remote indexers
-        if (searchQuery.length >= 3) {
-          fetchLiveArchiveOrg(searchQuery);
-        }
-      }, 350);
-    }
-
-    function clearSearch() {
-      document.getElementById('search-input').value = '';
-      document.getElementById('clear-search-btn').classList.add('hidden');
-      searchQuery = '';
-      applyFilters();
-    }
-
-    function setQuery(text) {
-      const input = document.getElementById('search-input');
-      input.value = text;
-      handleSearchInput();
-    }
-
-    function setCategory(cat) {
-      currentCategory = cat;
-      document.querySelectorAll('.cat-chip').forEach(btn => {
-        if (btn.getAttribute('data-cat') === cat) {
-          btn.className = 'cat-chip px-3 py-1.5 rounded-lg bg-emerald-500 text-black font-semibold shadow-sm transition';
-        } else {
-          btn.className = 'cat-chip px-3 py-1.5 rounded-lg bg-slate-800/90 text-slate-300 hover:bg-slate-700 transition';
-        }
-      });
-      applyFilters();
-    }
-
-    function applyFilters() {
-      const q = searchQuery.toLowerCase();
-      
-      filteredTorrents = allTorrents.filter(item => {
-        // Category filter
-        const matchCat = (currentCategory === 'all') || (item.category === currentCategory);
-        // Text filter
-        const matchText = !q || 
-          item.name.toLowerCase().includes(q) || 
-          item.desc.toLowerCase().includes(q) || 
-          item.hash.toLowerCase().includes(q);
-        
-        return matchCat && matchText;
-      });
-
-      // Apply Sorting
-      currentSort = document.getElementById('sort-select').value;
-      filteredTorrents.sort((a, b) => {
-        if (currentSort === 'seeds') return b.seeds - a.seeds;
-        if (currentSort === 'peers') return b.peers - a.peers;
-        if (currentSort === 'size') return b.sizeBytes - a.sizeBytes;
-        if (currentSort === 'name') return a.name.localeCompare(b.name);
-        if (currentSort === 'date') return new Date(b.updated) - new Date(a.updated);
-        return 0;
-      });
-
-      renderResults();
-    }
-
-    function setViewMode(mode) {
-      currentViewMode = mode;
-      const gridBtn = document.getElementById('view-mode-grid');
-      const listBtn = document.getElementById('view-mode-list');
-      const container = document.getElementById('torrent-results-container');
-
-      if (mode === 'grid') {
-        gridBtn.className = 'p-1 rounded text-emerald-400 bg-slate-800 transition';
-        listBtn.className = 'p-1 rounded text-slate-400 hover:text-slate-200 transition';
-        container.className = 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4';
-      } else {
-        gridBtn.className = 'p-1 rounded text-slate-400 hover:text-slate-200 transition';
-        listBtn.className = 'p-1 rounded text-emerald-400 bg-slate-800 transition';
-        container.className = 'flex flex-col gap-3';
-      }
-      renderResults();
-    }
-
-    // -------------------------------------------------------------
-    // 6. LIVE ARCHIVE.ORG & REMOTE PUBLIC API INTEGRATION
-    // -------------------------------------------------------------
-    async function fetchLiveArchiveOrg(query) {
-      const liveEnabled = document.getElementById('setting-live-archive')?.checked ?? true;
-      if (!liveEnabled) return;
-
-      const loadingBar = document.getElementById('live-loading-bar');
-      loadingBar.classList.remove('hidden');
+    document.getElementById("searchForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      showingSaved = false;
+      document.getElementById("savedTabBtn").classList.remove("bg-indigo-600");
+      const query = document.getElementById("searchInput").value.trim();
+      const status = document.getElementById("statusText");
+      status.textContent = `Searching multi-site indexes for "${query}"...`;
 
       try {
-        // Query Internet Archive API for public items with format:Torrent
-        const url = `https://archive.org/advancedsearch.php?q=${encodeURIComponent(query)}+AND+format:Torrent&fl[]=identifier,title,description,item_size,publicdate,downloads&sort[]=downloads+desc&rows=5&page=1&output=json`;
-        
-        const response = await fetch(url);
-        if (!response.ok) throw new Error("Remote response error");
-        const data = await response.json();
-        
-        if (data.response && data.response.docs) {
-          data.response.docs.forEach(doc => {
-            const id = 'ia-' + doc.identifier;
-            // Prevent duplicates
-            if (!allTorrents.some(t => t.id === id)) {
-              // Estimate simulated healthy seeds/peers based on Archive downloads
-              const seeds = Math.floor(Math.min(999, Math.max(12, (doc.downloads || 40) / 8)));
-              const peers = Math.floor(seeds * 0.25);
-              const pseudoHash = doc.identifier.split('').reduce((acc, char) => (acc + char.charCodeAt(0).toString(16)), '').padEnd(40, '0').slice(0, 40);
-
-              allTorrents.push({
-                id: id,
-                name: doc.title || doc.identifier,
-                category: 'archive',
-                badge: 'Archive.org',
-                sizeBytes: parseInt(doc.item_size) || 1240000000,
-                seeds: seeds,
-                peers: peers,
-                updated: doc.publicdate ? doc.publicdate.substring(0, 10) : '2023-01-01',
-                source: 'Internet Archive P2P',
-                hash: pseudoHash,
-                files: [`${doc.identifier}_archive.torrent`],
-                trackers: [
-                  "http://bt1.archive.org:6969/announce",
-                  "http://bt2.archive.org:6969/announce",
-                  "udp://tracker.opentrackr.org:1337/announce"
-                ],
-                desc: doc.description ? stripHtml(doc.description).substring(0, 160) + '...' : 'Public domain item hosted on archive.org.'
-              });
-            }
-          });
-          applyFilters();
-        }
+        const res = await fetch(`${WORKER_URL}?q=${encodeURIComponent(query)}`);
+        const data = await res.json();
+        currentResults = data.results || [];
+        status.textContent = `Found ${currentResults.length} deduplicated results for "${query}".`;
+        renderResults(currentResults);
       } catch (err) {
-        console.warn("Live IA fetch skipped/throttled:", err);
-      } finally {
-        loadingBar.classList.add('hidden');
+        status.textContent = "Error reaching Cloudflare Worker. Check your WORKER_URL.";
       }
-    }
-
-    function triggerLiveSearchNow() {
-      handleSearchInput();
-    }
-
-    // -------------------------------------------------------------
-    // 7. RENDERING ENGINE
-    // -------------------------------------------------------------
-    function formatBytes(bytes, decimals = 1) {
-      if (!bytes || bytes === 0) return '0 B';
-      const k = 1024;
-      const dm = decimals < 0 ? 0 : decimals;
-      const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-      const i = Math.floor(Math.log(bytes) / Math.log(k));
-      return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
-    }
-
-    function stripHtml(html) {
-      const tmp = document.createElement("DIV");
-      tmp.innerHTML = html;
-      return tmp.textContent || tmp.innerText || "";
-    }
-
-    function renderResults() {
-      const container = document.getElementById('torrent-results-container');
-      const emptyState = document.getElementById('empty-state');
-      const countLabel = document.getElementById('results-count');
-
-      countLabel.textContent = filteredTorrents.length;
-
-      if (filteredTorrents.length === 0) {
-        container.innerHTML = '';
-        emptyState.classList.remove('hidden');
-        return;
-      }
-
-      emptyState.classList.add('hidden');
-
-      if (currentViewMode === 'grid') {
-        container.innerHTML = filteredTorrents.map(t => createGridCardHTML(t)).join('');
-      } else {
-        container.innerHTML = filteredTorrents.map(t => createListRowHTML(t)).join('');
-      }
-
-      lucide.createIcons();
-    }
-
-    function isBookmarked(id) {
-      return savedBookmarks.some(b => b.id === id);
-    }
-
-    function createGridCardHTML(t) {
-      const magnetUri = buildMagnetURI(t);
-      const bookmarked = isBookmarked(t.id);
-      const ratio = t.peers > 0 ? (t.seeds / t.peers).toFixed(1) : t.seeds;
-
-      return `
-        <div class="glass-panel rounded-2xl border border-slate-800/90 hover:border-slate-700 p-5 flex flex-col justify-between transition-all duration-200 hover:-translate-y-0.5 group">
-          <!-- Top Row -->
-          <div>
-            <div class="flex items-center justify-between gap-2 mb-2">
-              <span class="text-[11px] font-mono font-bold px-2.5 py-0.5 rounded-full bg-slate-800 text-emerald-400 border border-slate-700/60">
-                ${t.badge || 'Torrent'}
-              </span>
-              <div class="flex items-center gap-1">
-                <button onclick="toggleBookmark('${t.id}')" class="p-1.5 rounded-lg text-slate-400 hover:text-emerald-400 hover:bg-slate-800 transition" title="Save Bookmark">
-                  <i data-lucide="${bookmarked ? 'bookmark-check' : 'bookmark'}" class="w-4 h-4 ${bookmarked ? 'text-emerald-400 fill-emerald-400/20' : ''}"></i>
-                </button>
-                <button onclick="openModal('${t.id}')" class="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition" title="Inspect Hash & Trackers">
-                  <i data-lucide="info" class="w-4 h-4"></i>
-                </button>
-              </div>
-            </div>
-
-            <h3 class="text-sm sm:text-base font-bold text-slate-100 group-hover:text-emerald-300 transition line-clamp-2 leading-snug cursor-pointer" onclick="openModal('${t.id}')">
-              ${t.name}
-            </h3>
-
-            <p class="text-xs text-slate-400 mt-2 line-clamp-2 leading-relaxed">
-              ${t.desc || 'No description provided.'}
-            </p>
-          </div>
-
-          <!-- Bottom Stats & Action Bar -->
-          <div class="mt-4 pt-3 border-t border-slate-800/80">
-            <!-- Health & Size -->
-            <div class="flex items-center justify-between text-xs font-mono mb-3">
-              <span class="text-slate-300 font-semibold">${formatBytes(t.sizeBytes)}</span>
-              <div class="flex items-center gap-3">
-                <span class="text-emerald-400 font-bold flex items-center gap-1" title="Seeders">
-                  <i data-lucide="arrow-up-circle" class="w-3.5 h-3.5"></i> ${t.seeds}
-                </span>
-                <span class="text-sky-400 font-bold flex items-center gap-1" title="Leechers/Peers">
-                  <i data-lucide="arrow-down-circle" class="w-3.5 h-3.5"></i> ${t.peers}
-                </span>
-              </div>
-            </div>
-
-            <!-- Buttons -->
-            <div class="grid grid-cols-2 gap-2">
-              <button onclick="copyMagnet('${magnetUri}')" class="px-3 py-2 rounded-xl bg-slate-800/90 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center justify-center gap-1.5 transition active:scale-95">
-                <i data-lucide="copy" class="w-3.5 h-3.5 text-slate-400"></i> Copy Magnet
-              </button>
-              <a href="${magnetUri}" class="px-3 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-bold flex items-center justify-center gap-1.5 transition active:scale-95 shadow-md shadow-emerald-500/10">
-                <i data-lucide="zap" class="w-3.5 h-3.5"></i> Open Client
-              </a>
-            </div>
-          </div>
-        </div>
-      `;
-    }
-
-    function createListRowHTML(t) {
-      const magnetUri = buildMagnetURI(t);
-      const bookmarked = isBookmarked(t.id);
-
-      return `
-        <div class="glass-panel p-4 rounded-xl border border-slate-800/90 hover:border-slate-700 flex flex-col md:flex-row md:items-center justify-between gap-4 transition group">
-          <div class="flex-1 min-w-0">
-            <div class="flex items-center gap-2 mb-1">
-              <span class="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-slate-800 text-emerald-400 border border-slate-700">
-                ${t.badge || 'Torrent'}
-              </span>
-              <span class="text-xs text-slate-500">${t.updated}</span>
-            </div>
-            <h3 class="text-sm font-bold text-white group-hover:text-emerald-300 transition truncate cursor-pointer" onclick="openModal('${t.id}')">
-              ${t.name}
-            </h3>
-          </div>
-
-          <div class="flex flex-wrap items-center justify-between md:justify-end gap-4 text-xs font-mono shrink-0">
-            <div class="w-20 text-right font-semibold text-slate-300">
-              ${formatBytes(t.sizeBytes)}
-            </div>
-
-            <div class="flex items-center gap-3 w-28 justify-end">
-              <span class="text-emerald-400 font-bold flex items-center gap-1" title="Seeders">
-                <i data-lucide="arrow-up-circle" class="w-3.5 h-3.5"></i> ${t.seeds}
-              </span>
-              <span class="text-sky-400 font-bold flex items-center gap-1" title="Leechers">
-                <i data-lucide="arrow-down-circle" class="w-3.5 h-3.5"></i> ${t.peers}
-              </span>
-            </div>
-
-            <div class="flex items-center gap-2">
-              <button onclick="toggleBookmark('${t.id}')" class="p-2 rounded-lg bg-slate-800 text-slate-400 hover:text-emerald-400 transition" title="Save Bookmark">
-                <i data-lucide="${bookmarked ? 'bookmark-check' : 'bookmark'}" class="w-4 h-4 ${bookmarked ? 'text-emerald-400' : ''}"></i>
-              </button>
-              <button onclick="copyMagnet('${magnetUri}')" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold flex items-center gap-1 transition">
-                <i data-lucide="copy" class="w-3.5 h-3.5"></i> Copy
-              </button>
-              <a href="${magnetUri}" class="px-3.5 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-black font-bold flex items-center gap-1 transition">
-                <i data-lucide="zap" class="w-3.5 h-3.5"></i> Open
-              </a>
-            </div>
-          </div>
-        </div>
-      `;
-    }
-
-    // -------------------------------------------------------------
-    // 8. CLIPBOARD & TOAST SYSTEM
-    // -------------------------------------------------------------
-    function copyText(text) {
-      if (!text) return;
-      // Using document.execCommand fallback for iframe / sandbox safety
-      const dummy = document.createElement("textarea");
-      dummy.value = text;
-      document.body.appendChild(dummy);
-      dummy.select();
-      try {
-        document.execCommand("copy");
-        showToast("Copied to clipboard!", "success");
-      } catch (e) {
-        showToast("Could not copy directly", "error");
-      }
-      document.body.removeChild(dummy);
-    }
-
-    function copyMagnet(uri) {
-      copyText(uri);
-    }
-
-    function showToast(message, type = 'info') {
-      const container = document.getElementById('toast-container');
-      const toast = document.createElement('div');
-      
-      const icon = type === 'success' ? 'check-circle' : (type === 'error' ? 'alert-circle' : 'info');
-      const borderCol = type === 'success' ? 'border-emerald-500/50 text-emerald-300' : (type === 'error' ? 'border-red-500/50 text-red-300' : 'border-cyan-500/50 text-cyan-300');
-
-      toast.className = `pointer-events-auto px-4 py-3 rounded-xl glass-panel border ${borderCol} shadow-2xl text-xs sm:text-sm font-medium flex items-center gap-2 transform transition-all duration-300 translate-y-4 opacity-0`;
-      toast.innerHTML = `<i data-lucide="${icon}" class="w-4 h-4"></i> <span>${message}</span>`;
-      
-      container.appendChild(toast);
-      lucide.createIcons();
-
-      requestAnimationFrame(() => {
-        toast.classList.remove('translate-y-4', 'opacity-0');
-      });
-
-      setTimeout(() => {
-        toast.classList.add('opacity-0', 'translate-y-2');
-        setTimeout(() => toast.remove(), 300);
-      }, 2600);
-    }
-
-    // -------------------------------------------------------------
-    // 9. MODAL INSPECTION
-    // -------------------------------------------------------------
-    function openModal(id) {
-      const torrent = allTorrents.find(t => t.id === id) || savedBookmarks.find(b => b.id === id);
-      if (!torrent) return;
-      selectedModalTorrent = torrent;
-
-      const modal = document.getElementById('torrent-modal');
-      document.getElementById('modal-title').textContent = torrent.name;
-      document.getElementById('modal-desc').textContent = torrent.desc || 'No further description available.';
-      document.getElementById('modal-category-badge').textContent = torrent.badge || torrent.category;
-      document.getElementById('modal-source-label').textContent = 'Source: ' + (torrent.source || 'Public Distributed');
-
-      document.getElementById('modal-size').textContent = formatBytes(torrent.sizeBytes);
-      document.getElementById('modal-seeds').textContent = torrent.seeds;
-      document.getElementById('modal-peers').textContent = torrent.peers;
-      document.getElementById('modal-ratio').textContent = torrent.peers > 0 ? (torrent.seeds / torrent.peers).toFixed(2) : 'Inf';
-
-      document.getElementById('modal-hash').textContent = torrent.hash;
-
-      // Trackers
-      const trContainer = document.getElementById('modal-trackers');
-      if (torrent.trackers && torrent.trackers.length > 0) {
-        trContainer.innerHTML = torrent.trackers.map(tr => `<div class="truncate select-all text-slate-300">📡 ${tr}</div>`).join('');
-      } else {
-        trContainer.innerHTML = '<div class="text-slate-500">Distributed Hash Table (DHT) / PEX Only</div>';
-      }
-
-      // Files list
-      const filesContainer = document.getElementById('modal-files');
-      if (torrent.files && torrent.files.length > 0) {
-        filesContainer.innerHTML = torrent.files.map(f => `<div class="flex items-center gap-1.5"><i data-lucide="file" class="w-3.5 h-3.5 text-slate-400"></i> ${f}</div>`).join('');
-      } else {
-        filesContainer.innerHTML = `<div class="flex items-center gap-1.5"><i data-lucide="file" class="w-3.5 h-3.5 text-slate-400"></i> ${torrent.name}</div>`;
-      }
-
-      // Action links
-      const magnetUri = buildMagnetURI(torrent);
-      document.getElementById('modal-copy-magnet').onclick = () => copyMagnet(magnetUri);
-      document.getElementById('modal-open-client').href = magnetUri;
-
-      updateModalBookmarkButton();
-
-      modal.classList.remove('hidden');
-      lucide.createIcons();
-    }
-
-    function closeModal() {
-      document.getElementById('torrent-modal').classList.add('hidden');
-      selectedModalTorrent = null;
-    }
-
-    function updateModalBookmarkButton() {
-      if (!selectedModalTorrent) return;
-      const btn = document.getElementById('modal-bookmark-btn');
-      const bookmarked = isBookmarked(selectedModalTorrent.id);
-      if (bookmarked) {
-        btn.innerHTML = `<i data-lucide="bookmark-check" class="w-4 h-4 text-emerald-400"></i> Remove Bookmark`;
-      } else {
-        btn.innerHTML = `<i data-lucide="bookmark-plus" class="w-4 h-4 text-slate-400"></i> Save Bookmark`;
-      }
-      lucide.createIcons();
-    }
-
-    function toggleBookmarkFromModal() {
-      if (!selectedModalTorrent) return;
-      toggleBookmark(selectedModalTorrent.id);
-      updateModalBookmarkButton();
-    }
-
-    // -------------------------------------------------------------
-    // 10. BOOKMARKS MANAGEMENT
-    // -------------------------------------------------------------
-    function toggleBookmark(id) {
-      const existingIdx = savedBookmarks.findIndex(b => b.id === id);
-      if (existingIdx >= 0) {
-        savedBookmarks.splice(existingIdx, 1);
-        showToast('Removed from Saved Bookmarks', 'info');
-      } else {
-        const item = allTorrents.find(t => t.id === id);
-        if (item) {
-          savedBookmarks.unshift(item);
-          showToast('Added to Saved Bookmarks!', 'success');
-        }
-      }
-      localStorage.setItem('vortix_bookmarks', JSON.stringify(savedBookmarks));
-      updateBookmarkCount();
-      renderBookmarksView();
-      renderResults(); // Refresh icons
-    }
-
-    function updateBookmarkCount() {
-      const badge = document.getElementById('saved-count-badge');
-      if (badge) badge.textContent = savedBookmarks.length;
-    }
-
-    function renderBookmarksView() {
-      const container = document.getElementById('bookmarks-container');
-      const emptyBox = document.getElementById('empty-bookmarks');
-      if (!container) return;
-
-      if (savedBookmarks.length === 0) {
-        container.innerHTML = '';
-        emptyBox.classList.remove('hidden');
-        return;
-      }
-
-      emptyBox.classList.add('hidden');
-      container.innerHTML = savedBookmarks.map(t => createGridCardHTML(t)).join('');
-      lucide.createIcons();
-    }
-
-    function clearAllBookmarks() {
-      if (savedBookmarks.length === 0) return;
-      savedBookmarks = [];
-      localStorage.removeItem('vortix_bookmarks');
-      updateBookmarkCount();
-      renderBookmarksView();
-      renderResults();
-      showToast('All bookmarks cleared', 'info');
-    }
-
-    // -------------------------------------------------------------
-    // 11. MAGNET ANALYZER & QR GENERATION
-    // -------------------------------------------------------------
-    let parsedActiveMagnet = null;
-
-    function parseCustomMagnet() {
-      const raw = document.getElementById('raw-magnet-input').value.trim();
-      if (!raw) {
-        showToast('Please paste a valid magnet: URI first', 'error');
-        return;
-      }
-
-      const parsed = parseMagnetURI(raw);
-      if (!parsed || !parsed.hash) {
-        showToast('Could not extract BTIH hash from magnet link', 'error');
-        return;
-      }
-
-      parsedActiveMagnet = {
-        id: 'parsed-' + parsed.hash.substring(0, 10),
-        name: parsed.name,
-        category: 'media',
-        badge: 'Custom Magnet',
-        sizeBytes: 0,
-        seeds: 1,
-        peers: 0,
-        updated: new Date().toISOString().substring(0, 10),
-        source: 'User Parsed URI',
-        hash: parsed.hash,
-        files: [parsed.name],
-        trackers: parsed.trackers,
-        desc: `Parsed custom link with ${parsed.trackers.length} tracker announce endpoints.`
-      };
-
-      document.getElementById('parsed-name').textContent = parsed.name;
-      document.getElementById('parsed-btih').textContent = parsed.hash;
-      document.getElementById('parsed-tr-count').textContent = parsed.trackers.length;
-      document.getElementById('parsed-open-btn').href = raw;
-
-      const trList = document.getElementById('parsed-trackers-list');
-      if (parsed.trackers.length > 0) {
-        trList.innerHTML = parsed.trackers.map(tr => `<li class="p-1.5 bg-slate-900 rounded truncate">📡 ${tr}</li>`).join('');
-      } else {
-        trList.innerHTML = '<li class="p-1.5 bg-slate-900 text-slate-500 rounded">No direct trackers found (Uses DHT / PEX)</li>';
-      }
-
-      // Generate QR Code
-      const qrBox = document.getElementById('qrcode-box');
-      qrBox.innerHTML = '';
-      try {
-        new QRCode(qrBox, {
-          text: raw,
-          width: 140,
-          height: 140,
-          colorDark: "#000000",
-          colorLight: "#ffffff",
-          correctLevel: QRCode.CorrectLevel.M
-        });
-      } catch (err) {
-        qrBox.innerHTML = '<span class="text-xs text-red-400">QR Generation unavailable</span>';
-      }
-
-      document.getElementById('analyzer-output-card').classList.remove('hidden');
-      lucide.createIcons();
-      showToast('Magnet analyzed successfully!', 'success');
-    }
-
-    function loadSampleMagnet() {
-      document.getElementById('raw-magnet-input').value = 'magnet:?xt=urn:btih:3b11050a48e6f2c699aa1310e25015a8cdbb4e4f&dn=Ubuntu-24.04-desktop-amd64.iso&tr=https%3A%2F%2Ftorrent.ubuntu.com%2Fannounce&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce';
-      parseCustomMagnet();
-    }
-
-    function copyParsedMagnet() {
-      if (parsedActiveMagnet) {
-        copyText(document.getElementById('raw-magnet-input').value);
-      }
-    }
-
-    function saveParsedAsBookmark() {
-      if (!parsedActiveMagnet) return;
-      if (!isBookmarked(parsedActiveMagnet.id)) {
-        savedBookmarks.unshift(parsedActiveMagnet);
-        localStorage.setItem('vortix_bookmarks', JSON.stringify(savedBookmarks));
-        updateBookmarkCount();
-        showToast('Parsed magnet added to Bookmarks!', 'success');
-      } else {
-        showToast('Already bookmarked', 'info');
-      }
-    }
-
-    // -------------------------------------------------------------
-    // 12. TAB SWITCHING
-    // -------------------------------------------------------------
-    function switchTab(tabId) {
-      document.getElementById('view-search').classList.add('hidden');
-      document.getElementById('view-analyzer').classList.add('hidden');
-      document.getElementById('view-bookmarks').classList.add('hidden');
-
-      // Desktop tab buttons styling
-      const tabs = ['search', 'analyzer', 'bookmarks'];
-      tabs.forEach(t => {
-        const btn = document.getElementById(`tab-btn-${t}`);
-        if (t === tabId) {
-          btn.className = 'nav-tab px-3.5 py-1.5 rounded-lg text-sm font-medium transition flex items-center gap-2 bg-emerald-500/15 text-emerald-400 border border-emerald-500/30';
-        } else {
-          btn.className = 'nav-tab px-3.5 py-1.5 rounded-lg text-sm font-medium transition flex items-center gap-2 text-slate-400 hover:text-slate-200';
-        }
-      });
-
-      // Mobile tab icons styling
-      document.querySelectorAll('.mobile-tab-btn').forEach(btn => {
-        if (btn.getAttribute('data-tab') === tabId) {
-          btn.className = 'mobile-tab-btn flex flex-col items-center gap-1 text-emerald-400 font-bold';
-        } else {
-          btn.className = 'mobile-tab-btn flex flex-col items-center gap-1 text-slate-400';
-        }
-      });
-
-      if (tabId === 'search') {
-        document.getElementById('view-search').classList.remove('hidden');
-      } else if (tabId === 'analyzer') {
-        document.getElementById('view-analyzer').classList.remove('hidden');
-      } else if (tabId === 'bookmarks') {
-        renderBookmarksView();
-        document.getElementById('view-bookmarks').classList.remove('hidden');
-      }
-
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    }
-
-    // -------------------------------------------------------------
-    // 13. SETTINGS MODAL
-    // -------------------------------------------------------------
-    function openSettingsModal() {
-      document.getElementById('setting-indexer-url').value = localStorage.getItem('vortix_indexer_url') || '';
-      document.getElementById('setting-api-key').value = localStorage.getItem('vortix_api_key') || '';
-      document.getElementById('settings-modal').classList.remove('hidden');
-    }
-
-    function closeSettingsModal() {
-      document.getElementById('settings-modal').classList.add('hidden');
-    }
-
-    function saveSettings() {
-      const url = document.getElementById('setting-indexer-url').value.trim();
-      const key = document.getElementById('setting-api-key').value.trim();
-      localStorage.setItem('vortix_indexer_url', url);
-      localStorage.setItem('vortix_api_key', key);
-      
-      closeSettingsModal();
-      showToast('Settings saved successfully', 'success');
-    }
-
-    // -------------------------------------------------------------
-    // 14. INITIALIZATION
-    // -------------------------------------------------------------
-    window.addEventListener('DOMContentLoaded', () => {
-      applyFilters();
-      updateBookmarkCount();
-      lucide.createIcons();
     });
   </script>
 </body>
